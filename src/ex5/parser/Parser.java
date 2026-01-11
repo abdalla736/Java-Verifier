@@ -31,7 +31,7 @@ public class Parser {
             }else if(lineType == TypeLineOptions.variableLine){
 
                 VariableLine variableLine = new VariableLine(line);
-
+                return variableLine.compileVariableLine();
             }
             else{
                 return Sjavac.OUT_SYNTAX_ERROR;
