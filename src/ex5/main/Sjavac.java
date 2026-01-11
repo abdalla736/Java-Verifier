@@ -1,6 +1,7 @@
 package ex5.main;
 
 
+import ex5.handleVariables.VariableException;
 import ex5.parser.Parser;
 
 import java.io.BufferedReader;
@@ -34,6 +35,8 @@ public class Sjavac {
         }catch(IOException e){
             System.err.println(""+e.getMessage());
             System.out.println(Sjavac.OUT_IO_ERROR);
+
+        }catch (VariableException e){
 
         }
 

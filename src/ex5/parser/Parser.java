@@ -2,6 +2,7 @@ package ex5.parser;
 
 import ex5.handleMethods.MethodParser;
 import ex5.handleVariables.Variable;
+import ex5.handleVariables.VariableException;
 import ex5.handleVariables.VariableLine;
 import ex5.main.Sjavac;
 
@@ -16,7 +17,8 @@ public class Parser {
         this.bufferedReader=bufferedReader;
     }
 
-    public int parse() throws IOException {
+    public int parse() throws IOException,
+            VariableException {
 
         String line;
         while((line=this.bufferedReader.readLine()) != null){
@@ -31,7 +33,7 @@ public class Parser {
             }else if(lineType == TypeLineOptions.variableLine){
 
                 VariableLine variableLine = new VariableLine(line);
-                return variableLine.compileVariableLine();
+                int result = variableLine.compileVariableLine();
             }
             else{
                 return Sjavac.OUT_SYNTAX_ERROR;
