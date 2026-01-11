@@ -33,6 +33,9 @@ public class Parser {
                 VariableLine variableLine = new VariableLine(line);
 
             }
+            else{
+                return Sjavac.OUT_SYNTAX_ERROR;
+            }
         }
         return Sjavac.OUT_SUCCESS;
     }

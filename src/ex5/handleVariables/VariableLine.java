@@ -8,5 +8,7 @@ public class VariableLine {
         this.varLine=varLine;
     }
 
+    public int compileVariable(){
 
+    }
 }

@@ -8,14 +8,15 @@ public class Line {
             "(([a-zA-Z])\\w*|_[a-zA-Z0-9]\\w*)"+
             "(\\s*=\\s*[^;])?;";
 
-    public static TypeLineOptions getLineType(String line){
-        switch(line){
-            Pattern pattern= Pattern.compile(VAR_REGEX);
-            Matcher matcher = pattern.matcher(line);
 
-            if(matcher.matches()){//then variable line
-                return TypeLineOptions.variableLine;
-            }
+
+    public static TypeLineOptions getLineType(String line){
+        Pattern varPattern= Pattern.compile(VAR_REGEX);
+        Matcher varMatcher = varPattern.matcher(line);
+
+        if(varMatcher.matches()){ //then variable line
+            return TypeLineOptions.variableLine;
         }
+        return null;
     }
 }
