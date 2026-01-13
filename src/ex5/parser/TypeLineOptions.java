@@ -4,5 +4,10 @@ public enum TypeLineOptions {
     commentLine,
     variableLine,
     methodLine,
-
+    emptyLine,
+    returnLine,
+    ifWhileLine,
+    closingBrackets,
+    methodCallLine
 }
+
