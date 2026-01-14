@@ -216,7 +216,9 @@ public class MethodLine {
     private boolean isTypeCompatible(String targetType, String sourceType) {
         if (targetType.equals(sourceType)) return true;
         if (targetType.equals("double") && sourceType.equals("int")) return true;
-        if (targetType.equals("boolean") && (sourceType.equals("int") || sourceType.equals("double"))) return true;
+        if (targetType.equals("boolean") && (sourceType.equals("int") || sourceType.equals("double"))){
+            return true;
+        }
         return false;
     }
 }

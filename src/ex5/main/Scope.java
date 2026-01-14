@@ -6,11 +6,12 @@ import java.util.Map;
 import java.util.Stack;
 
 public class Scope {
+    private static final String GLOBAL_ERROR = "globals cannot be null";
     private final Stack<Map<String, Variable>> scopes = new Stack<>();
     private final Map<String, Variable> globals;
 
     public Scope(Map<String, Variable> globals) {
-        if (globals == null) throw new IllegalArgumentException("globals cannot be null");
+        if (globals == null) throw new IllegalArgumentException(GLOBAL_ERROR);
         this.globals = globals;
         pushScope();
     }

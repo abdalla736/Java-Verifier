@@ -14,7 +14,8 @@ public class VariableLine {
     private static final String BOOL_LIT = "(?:true|false)";
     private static final String CHAR_LIT = "'[^']'";
     private static final String STR_LIT = "\"[^\"]*\"";
-    private static final String VALUE = "(?:" + STR_LIT + "|" + CHAR_LIT + "|" + BOOL_LIT + "|" + DOUBLE_LIT + "|" + INT_LIT + "|" + NAME + ")";
+    private static final String VALUE = "(?:" + STR_LIT + "|" + CHAR_LIT + "|" + BOOL_LIT
+            + "|" + DOUBLE_LIT + "|" + INT_LIT + "|" + NAME + ")";
 
     private static final Pattern DECL_HEAD = Pattern.compile("^\\s*(final\\s+)?(" + TYPE + ")\\s+(.+?)\\s*$");
     private static final Pattern DECL_ITEM = Pattern.compile("^(" + NAME + ")(?:\\s*=\\s*(" + VALUE + "))?$");
@@ -26,7 +27,8 @@ public class VariableLine {
         this.varLine = varLine;
     }
 
-    public void compileVariableLine(HashMap<String, Variable> variables, Scope scope, boolean isGlobal) throws VariableException {
+    public void compileVariableLine(HashMap<String, Variable> variables, Scope scope, boolean isGlobal)
+            throws VariableException {
         String line = varLine == null ? "" : varLine.trim();
 
         if (!line.endsWith(";")) {
@@ -103,7 +105,8 @@ public class VariableLine {
             String name = item.group(1);
             String itemValue = item.group(2);
 
-            Variable variable = isGlobal ? variables.get(name) : (scope != null ? scope.resolve(name) : null);
+            Variable variable = isGlobal ? variables.get(name) :
+                    (scope != null ? scope.resolve(name) : null);
             if (variable == null) {
                 throw new VariableException("assign to undeclared variable: " + name);
             }
@@ -116,7 +119,11 @@ public class VariableLine {
         }
     }
 
-    private void assignmentValidity(String type, String itemValue, HashMap<String, Variable> variables, Scope scope, boolean isGlobal) throws VariableException {
+    private void assignmentValidity(String type, String itemValue,
+                                    HashMap<String, Variable> variables,
+                                    Scope scope, boolean isGlobal)
+            throws VariableException {
+
         if (itemValue == null) return;
 
         if (Pattern.compile(NAME).matcher(itemValue).matches()) {

@@ -13,7 +13,8 @@ public class Variable {
         this.isFinal = isFinal;
     }
 
-    public Variable(boolean initialized, String varType, boolean isFinal, String varValue, String varOldValue) {
+    public Variable(boolean initialized, String varType, boolean isFinal,
+                    String varValue, String varOldValue) {
         this.initialized = initialized;
         this.varType = varType;
         this.isFinal = isFinal;

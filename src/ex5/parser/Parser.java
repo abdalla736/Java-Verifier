@@ -11,6 +11,10 @@ import java.io.IOException;
 import java.util.HashMap;
 
 public class Parser {
+
+    private final static String INVALID_LINE_SYNTAX = "Invalid line syntax: ";
+    private static final String INVALID_STATEMENT = "Invalid statement in global scope: ";
+
     private final BufferedReader bufferedReader;
     private final HashMap<String, Variable> globalVariables;
     private final HashMap<String, Method> methods;
@@ -28,7 +32,7 @@ public class Parser {
             TypeLineOptions lineType = Line.getLineType(line);
 
             if (lineType == null) {
-                throw new MethodException("Invalid line syntax: " + line);
+                throw new MethodException(INVALID_LINE_SYNTAX + line);
             }
 
             if (lineType == TypeLineOptions.commentLine || lineType == TypeLineOptions.emptyLine) {
@@ -43,7 +47,7 @@ public class Parser {
                 VariableLine variableLine = new VariableLine(line);
                 variableLine.compileVariableLine(globalVariables, null, true);
             } else {
-                throw new MethodException("Invalid statement in global scope: " + line);
+                throw new MethodException(INVALID_STATEMENT + line);
             }
         }
 

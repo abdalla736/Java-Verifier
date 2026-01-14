@@ -11,19 +11,22 @@ public class Sjavac {
     public static final int OUT_SUCCESS = 0;
     public static final int OUT_SYNTAX_ERROR = 1;
     public static final int OUT_IO_ERROR = 2;
+    private static final String ARG_ERROR = "Error: Expected exactly one argument (source file)";
+    private static final String END_NAME_FILE = ".sjava";
+    private static final String END_NAME_FILE_ERROR="Error: File must have .sjava extension";
 
     public static void main(String[] args) {
         if (args.length != 1) {
             System.out.println(OUT_IO_ERROR);
-            System.err.println("Error: Expected exactly one argument (source file)");
+            System.err.println(ARG_ERROR);
             return;
         }
 
         String fileName = args[0];
 
-        if (!fileName.endsWith(".sjava")) {
+        if (!fileName.endsWith(END_NAME_FILE)) {
             System.out.println(OUT_IO_ERROR);
-            System.err.println("Error: File must have .sjava extension");
+            System.err.println(END_NAME_FILE_ERROR);
             return;
         }
 
