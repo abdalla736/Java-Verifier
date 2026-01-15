@@ -1,0 +1,149 @@
+abdalla.hle192, shhade.meary
+326348679, 323089698
+
+Main Regular Expressions:
+1) Method Declaration Regex
+
+Regex (conceptually):
+    ^\s*void\s+([A-Za-z]\w*)\s*\((.*)\)\s*\{\s*$
+
+Explanation (component by component):
+
+    ^ / $ — anchors the match to the whole line (prevents partial matches).
+
+    \s* — allows leading/trailing whitespace.
+
+    void — enforces that only void methods are declared (as required in S-Java).
+
+    \s+ — requires at least one space after void.
+
+    ([A-Za-z]\w*) — captures the method name:
+
+    [A-Za-z] ensures the name starts with a letter
+
+    \w* allows letters/digits/underscore afterward
+
+    \s*\(\s*(.*)\s*\)\s* — captures everything inside parentheses as the raw parameter string:
+
+    parentheses are matched literally
+
+    (.*) collects the parameter list (later validated with a dedicated parameter parser)
+
+    \{\s* — requires the method opening brace { at end of the declaration line.
+
+    Why this regex:
+    It cleanly separates recognition (this is a method declaration line) from validation
+     (parameter correctness is checked later),
+     which simplifies the parser and reduces duplicated parsing logic.
+
+2) Variable Declaration / Assignment Regexes
+
+    Declaration head:
+    ^\s*(final\s+)?(int|double|boolean|char|String)\s+(.+?)\s*$
+
+    Declaration item:
+    ^(NAME)(?:\s*=\s*(VALUE))?$
+
+    Assignment item:
+    ^(NAME)\s*=\s*(VALUE)$
+
+    (In code, NAME and VALUE are defined as reusable regex parts.)
+
+    Explanation:
+
+    Declaration head:
+
+    (final\s+)? — optional final modifier
+
+    (int|double|boolean|char|String) — captures the type token
+
+    (.+?) — captures the remainder (comma-separated variable items)
+
+    Declaration item:
+
+    NAME — variable name pattern
+
+    (?: ... )? — optional assignment part in a declaration (int x; vs int x=5;)
+
+    VALUE — either a literal or a variable reference
+
+    Assignment item:
+
+    requires both LHS NAME and RHS VALUE.
+
+    Why these regexes:
+    They allow parsing of:
+
+    multiple declarations in one line (int a, b=3;)
+
+    multiple assignments in one line (a=5, b=c;)
+    while keeping semantic checks (final rules, initialization, type compatibility)
+    in code rather than in overly complex regex.
+
+Design Choices and Responsibility Division
+
+The project is organized into modules based on responsibility:
+
+ex5.main
+
+    Sjavac: entry point. Validates command-line input, opens the file,
+    runs parsing, and prints only the required output code (0/1/2).
+
+    Scope: manages nested scopes inside methods/blocks
+    (stack of local scopes + access to global variables).
+    Provides lookup and local declaration utilities.
+
+ex5.parser
+
+    Line: classifies each raw line into a TypeLineOptions
+    (comment, empty, method declaration, variable declaration, assignment, if/while, return, etc.).
+
+    Parser: the top-level driver that reads the file line-by-line
+    and dispatches handling based on line type, enforcing global-scope legality.
+
+    TypeLineOptions: enum describing allowed line categories.
+
+ex5.handleVariables
+
+    Variable: stores semantic information about a variable (type, initialized, final).
+
+    VariableLine: validates variable declarations and assignments, including:
+
+    duplicate checks in current scope
+
+    final initialization rules
+
+    assignment type compatibility
+
+    reference initialization rules
+
+    VariableException: raised on illegal variable-related syntax/semantic cases.
+
+ex5.handleMethods
+
+    Method: stores method signature information (name + parameter list).
+
+    MethodLine: validates method declarations and method bodies:
+
+    parameter parsing and insertion into method scope
+
+    scope stack management on { / }
+
+    enforcing “return must be last”
+
+    validating method calls against stored signatures
+
+    IfWhileLine: validates if/while conditions
+    (only boolean/numeric/initialized variable references allowed).
+
+    MethodException: raised on illegal method/flow/control/call issues.
+
+Overall design rationale:
+    Parsing is split into two stages:
+
+    Line classification (Line.getLineType) to keep file-reading logic simple.
+
+    Semantic validation in specialized handlers
+    (VariableLine, MethodLine, IfWhileLine) that operate with shared state
+     (Scope, global variables, method table).
+    This keeps each class focused, reduces duplication, and makes correctness easier to reason about.

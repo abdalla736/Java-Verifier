@@ -1,12 +1,35 @@
 package ex5.handleMethods;
 
-import ex5.main.Scope;
+import ex5.main.Scopes;
 import ex5.handleVariables.Variable;
 
 import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Validates {@code if} and {@code while} statements in S-Java source code.
+ *
+ * <p>This class is responsible for syntactic and semantic verification of
+ * conditional control-flow statements of the form:
+ *
+ * <pre>
+ * if (condition) {
+ * while (condition) {
+ * </pre>
+ *
+ * <p>The class ensures that:
+ * <ul>
+ *   <li>The statement syntax is correct</li>
+ *   <li>The condition is non-empty</li>
+ *   <li>Each condition term is valid</li>
+ *   <li>All referenced variables exist and are initialized</li>
+ *   <li>Only boolean, int, or double expressions are used in conditions</li>
+ * </ul>
+ *
+ * <p>This class does not manage scopes itself; it relies on {@link Scopes}
+ * to resolve variable references.</p>
+ */
 public class IfWhileLine {
 
     // ===== Regex constants =====
@@ -39,11 +62,32 @@ public class IfWhileLine {
 
     private final String line;
 
+    /**
+     * Constructs a new {@code IfWhileLine} for validation.
+     *
+     * @param line the raw source line containing the {@code if} or {@code while} statement
+     */
     public IfWhileLine(String line) {
         this.line = line;
     }
 
-    public void compileIfWhile(Scope scope, HashMap<String, Variable> globalVars) throws MethodException {
+    /**
+     * Validates the syntax and semantics of an {@code if} or {@code while} statement.
+     *
+     * <p>This method verifies:
+     * <ul>
+     *   <li>Correct statement syntax</li>
+     *   <li>Presence of a non-empty condition</li>
+     *   <li>Legality of all condition terms</li>
+     * </ul>
+     *
+     * @param scopes the active scope stack used to resolve local variables
+     * @param globalVars the map of global variables
+     *
+     * @throws MethodException if the statement or its condition is illegal
+     */
+    public void compileIfWhile(Scopes scopes, HashMap<String, Variable> globalVars)
+            throws MethodException {
         Matcher m = IF_WHILE_PATTERN.matcher(line);
         if (!m.matches()) {
             throw new MethodException(ERR_INVALID_IF_WHILE_SYNTAX);
@@ -54,10 +98,10 @@ public class IfWhileLine {
             throw new MethodException(ERR_EMPTY_CONDITION);
         }
 
-        validateCondition(condition, scope, globalVars);
+        validateCondition(condition, scopes, globalVars);
     }
 
-    private void validateCondition(String cond, Scope scope, HashMap<String, Variable> globalVars)
+    private void validateCondition(String cond, Scopes scopes, HashMap<String, Variable> globalVars)
             throws MethodException {
 
         // Split and keep empty tokens to catch "a &&" or "|| b"
@@ -78,7 +122,7 @@ public class IfWhileLine {
 
             // variable reference
             if (NAME_PATTERN.matcher(part).matches()) {
-                Variable v = (scope != null) ? scope.resolve(part) : globalVars.get(part);
+                Variable v = (scopes != null) ? scopes.resolve(part) : globalVars.get(part);
 
                 if (v == null) {
                     throw new MethodException(ERR_UNDEFINED_VAR_IN_COND_PREFIX + part);
