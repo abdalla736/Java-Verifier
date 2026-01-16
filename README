@@ -1,149 +1,146 @@
 abdalla.hle192, shhade.meary
 326348679, 323089698
 
-Main Regular Expressions:
-1) Method Declaration Regex
+=== MAIN REGULAR EXPRESSIONS ===
 
-Regex (conceptually):
-    ^\s*void\s+([A-Za-z]\w*)\s*\((.*)\)\s*\{\s*$
+1. METHOD DECLARATION PATTERN
+Pattern: ^\\s*void\\s+([A-Za-z]\\w*)\\s*\\((.*)\\)\\s*\\{\\s*$
 
-Explanation (component by component):
+Structure breakdown:
+- ^\\s* : Matches start of line with optional leading whitespace
+- void\\s+ : Matches the literal "void" keyword followed by required whitespace
+- ([A-Za-z]\\w*) : CAPTURE GROUP 1 - Method name must start with a letter, followed by any word characters
+ (letters, digits, underscores)
+- \\s*\\((.*)\\)\\s* : Optional whitespace, opening parenthesis, CAPTURE GROUP 2
+(parameter list - any characters), closing parenthesis, optional whitespace
+- \\{\\s*$ : Opening brace followed by optional whitespace and end of line
 
-    ^ / $ — anchors the match to the whole line (prevents partial matches).
+Purpose: Validates method declaration syntax and extracts the method name and parameter list
+for further processing. The pattern ensures proper S-Java method structure while capturing
+essential components for semantic validation.
 
-    \s* — allows leading/trailing whitespace.
+2. VARIABLE DECLARATION PATTERN
+Pattern: ^\\s*(final\\s+)?(int|double|String|boolean|char)\\s+(.+?)\\s*$
 
-    void — enforces that only void methods are declared (as required in S-Java).
+Structure breakdown:
+- ^\\s* : Matches start of line with optional leading whitespace
+- (final\\s+)? : CAPTURE GROUP 1 - Optional "final" keyword followed by required whitespace
+(the ? makes the entire group optional)
+- (int|double|String|boolean|char) : CAPTURE GROUP 2 - Alternation (|) matches exactly one of
+the five allowed S-Java types
+- \\s+ : Required whitespace separator between type and variable names
+- (.+?) : CAPTURE GROUP 3 - Non-greedy match of one or more characters (variable name(s)
+ and potential initialization expressions)
+- \\s*$ : Optional trailing whitespace and end of line
 
-    \s+ — requires at least one space after void.
+Purpose: Identifies variable declarations while capturing the final modifier status, variable type,
+and the remainder of the declaration (which may contain multiple comma-separated variables with
+optional initializations).
+The non-greedy quantifier ensures we capture only what's needed before the semicolon.
 
-    ([A-Za-z]\w*) — captures the method name:
 
-    [A-Za-z] ensures the name starts with a letter
+=== DESIGN CHOICES AND CODE ARCHITECTURE ===
 
-    \w* allows letters/digits/underscore afterward
+TWO-PASS PARSING STRATEGY:
+The design implements a two-pass parsing approach to handle forward references in method calls:
+- Pass 1:
+Collects all method signatures and builds the global variables table without validating method bodies
+- Pass 2:
+ Validates all method bodies using the complete methods table,
+  enabling methods to call other methods declared later in the file
 
-    \s*\(\s*(.*)\s*\)\s* — captures everything inside parentheses as the raw parameter string:
+This separation resolves the forward-reference problem while maintaining clear validation boundaries.
 
-    parentheses are matched literally
+SEPARATION OF CONCERNS:
+The code follows a modular architecture where each component has a single, well-defined responsibility:
 
-    (.*) collects the parameter list (later validated with a dedicated parameter parser)
+1. LEXICAL LAYER (ex5.parser.Line):
+   - Performs pattern matching to classify raw source lines
+   - Uses precompiled regex patterns for performance
+   - Returns TypeLineOptions enum values
+   - Does NOT perform semantic validation
+   - Responsibility: "What kind of statement is this?"
 
-    \{\s* — requires the method opening brace { at end of the declaration line.
+2. SYNTAX/SEMANTIC VALIDATION LAYER:
+   Each validator class handles one statement type:
 
-    Why this regex:
-    It cleanly separates recognition (this is a method declaration line) from validation
-     (parameter correctness is checked later),
-     which simplifies the parser and reduces duplicated parsing logic.
+   a) VariableLine (ex5.handleVariables):
+      - Validates variable declarations and assignments
+      - Enforces final semantics (must initialize, cannot reassign)
+      - Checks type compatibility using ValidationUtils
+      - Handles both global and local scopes
+      - Responsibility: "Is this variable statement legal?"
 
-2) Variable Declaration / Assignment Regexes
+   b) MethodLine (ex5.handleMethods):
+      - Parses method signatures (parseSignature for pass 1)
+      - Validates parameter lists (no duplicates, valid types)
+      - Orchestrates method body validation
+      - Manages scope depth tracking for nested blocks
+      - Validates method calls (existence, argument count, type compatibility)
+      - Responsibility: "Is this method declaration and body legal?"
 
-    Declaration head:
-    ^\s*(final\s+)?(int|double|boolean|char|String)\s+(.+?)\s*$
+   c) IfWhileLine (ex5.handleMethods):
+      - Validates conditional statement syntax
+      - Splits compound conditions on && and ||
+      - Validates each condition term (boolean/int/double literals or variables)
+      - Ensures referenced variables are declared and initialized
+      - Responsibility: "Is this control flow statement legal?"
 
-    Declaration item:
-    ^(NAME)(?:\s*=\s*(VALUE))?$
+3. SCOPE MANAGEMENT (ex5.main.Scopes):
+   - Maintains a stack-based scope hierarchy (method scope + nested blocks)
+   - Implements variable resolution (inner to outer, then global)
+   - Provides declareLocal/resolve interface
+   - Does NOT perform validation itself
+   - Responsibility: "Where is this variable declared?"
 
-    Assignment item:
-    ^(NAME)\s*=\s*(VALUE)$
+4. SEMANTIC MODELS:
+   - Variable (ex5.handleVariables): Stores type, initialization status, final modifier
+   - Method (ex5.handleMethods): Stores name and parameter list
+   - Method.Parameter: Stores type, name, final modifier
+   - These are pure data carriers without validation logic
 
-    (In code, NAME and VALUE are defined as reusable regex parts.)
+5. VALIDATION UTILITIES (ex5.validator.ValidationUtils):
+   - Centralizes literal validation patterns (int, double, boolean, char, String)
+   - Provides type compatibility checking (int→double, int/double→boolean)
+   - Validates argument-parameter matching
+   - Shared by VariableLine, MethodLine, and IfWhileLine
+   - Responsibility: "Are these types compatible?"
 
-    Explanation:
+6. ORCHESTRATION LAYER (ex5.parser.Parser):
+   - Reads entire file into memory for two-pass processing
+   - Maintains global tables (variables, methods)
+   - Delegates to appropriate validators based on Line classification
+   - Handles pass 1 (collect signatures) and pass 2 (validate bodies)
+   - Tracks global variable initialization state between passes
+   - Responsibility: "Coordinate the overall validation process"
 
-    Declaration head:
+7. ENTRY POINT (ex5.main.Sjavac):
+   - Validates command-line arguments and file extension
+   - Opens BufferedReader
+   - Catches exceptions and translates to exit codes (0=success, 1=syntax error, 2=IO error)
+   - Responsibility: "Handle program invocation and error reporting"
 
-    (final\s+)? — optional final modifier
 
-    (int|double|boolean|char|String) — captures the type token
+ERROR HANDLING STRATEGY:
+- Each validator throws specific exceptions (VariableException, MethodException)
+- Error messages include descriptive prefixes and the problematic token/variable name
+- All exceptions propagate to Sjavac, which converts them to exit code 1
+- IO errors are caught separately and result in exit code 2
 
-    (.+?) — captures the remainder (comma-separated variable items)
+REGEX USAGE PHILOSOPHY:
+- Patterns are precompiled as static final fields for performance
+- Complex validation is split: regex for syntax structure, Java logic for semantic rules
+- Capture groups extract components for further processing
+- Named constants for regex pieces improve maintainability (e.g., NAME, TYPE, VALUE)
 
-    Declaration item:
+SCOPE AND VARIABLE TRACKING:
+- Global variables persist throughout parsing
+- Method-local scopes are created fresh for each method validation
+- Global initialization state is saved before method validation and restored after
+- This ensures methods don't affect global variable state during validation
 
-    NAME — variable name pattern
-
-    (?: ... )? — optional assignment part in a declaration (int x; vs int x=5;)
-
-    VALUE — either a literal or a variable reference
-
-    Assignment item:
-
-    requires both LHS NAME and RHS VALUE.
-
-    Why these regexes:
-    They allow parsing of:
-
-    multiple declarations in one line (int a, b=3;)
-
-    multiple assignments in one line (a=5, b=c;)
-    while keeping semantic checks (final rules, initialization, type compatibility)
-    in code rather than in overly complex regex.
-
-Design Choices and Responsibility Division
-
-The project is organized into modules based on responsibility:
-
-ex5.main
-
-    Sjavac: entry point. Validates command-line input, opens the file,
-    runs parsing, and prints only the required output code (0/1/2).
-
-    Scope: manages nested scopes inside methods/blocks
-    (stack of local scopes + access to global variables).
-    Provides lookup and local declaration utilities.
-
-ex5.parser
-
-    Line: classifies each raw line into a TypeLineOptions
-    (comment, empty, method declaration, variable declaration, assignment, if/while, return, etc.).
-
-    Parser: the top-level driver that reads the file line-by-line
-    and dispatches handling based on line type, enforcing global-scope legality.
-
-    TypeLineOptions: enum describing allowed line categories.
-
-ex5.handleVariables
-
-    Variable: stores semantic information about a variable (type, initialized, final).
-
-    VariableLine: validates variable declarations and assignments, including:
-
-    duplicate checks in current scope
-
-    final initialization rules
-
-    assignment type compatibility
-
-    reference initialization rules
-
-    VariableException: raised on illegal variable-related syntax/semantic cases.
-
-ex5.handleMethods
-
-    Method: stores method signature information (name + parameter list).
-
-    MethodLine: validates method declarations and method bodies:
-
-    parameter parsing and insertion into method scope
-
-    scope stack management on { / }
-
-    enforcing “return must be last”
-
-    validating method calls against stored signatures
-
-    IfWhileLine: validates if/while conditions
-    (only boolean/numeric/initialized variable references allowed).
-
-    MethodException: raised on illegal method/flow/control/call issues.
-
-Overall design rationale:
-    Parsing is split into two stages:
-
-    Line classification (Line.getLineType) to keep file-reading logic simple.
-
-    Semantic validation in specialized handlers
-    (VariableLine, MethodLine, IfWhileLine) that operate with shared state
-     (Scope, global variables, method table).
-    This keeps each class focused, reduces duplication, and makes correctness easier to reason about.
+TYPE SYSTEM:
+- Supports five types: int, double, boolean, char, String
+- Type promotion: int→double, int/double→boolean
+- Validation centralized in ValidationUtils for consistency
+- Literal matching uses specific patterns per type
