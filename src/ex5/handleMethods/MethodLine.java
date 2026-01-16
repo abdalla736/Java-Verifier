@@ -6,14 +6,15 @@ import ex5.handleVariables.VariableLine;
 import ex5.main.Scopes;
 import ex5.parser.Line;
 import ex5.parser.TypeLineOptions;
+import ex5.validator.ValidationUtils;
 
-import java.io.BufferedReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static ex5.validator.ValidationUtils.TYPE;
 
 /**
  * Validates and compiles a single S-Java method declaration (header + body).
@@ -42,20 +43,19 @@ public class MethodLine {
 
     // ===== Regex constants =====
     private static final String METHOD_NAME = "([A-Za-z]\\w*)";
-    private static final String TYPE = "(int|double|boolean|char|String)";
 
     private static final Pattern METHOD_PATTERN =
             Pattern.compile("^\\s*void\\s+" + METHOD_NAME + "\\s*\\((.*)\\)\\s*\\{\\s*$");
 
     private static final Pattern PARAM_PATTERN =
-            Pattern.compile("^\\s*(final\\s+)?(" + TYPE + ")\\s+([A-Za-z]\\w*)\\s*$");
+            Pattern.compile("^\\s*(final\\s+)?(" +  TYPE + ")\\s+([A-Za-z]\\w*)\\s*$");
 
     private static final Pattern CALL_PATTERN =
             Pattern.compile("^\\s*([A-Za-z]\\w*)\\s*\\((.*)\\)\\s*;\\s*$");
 
     // ===== Error constants =====
     private static final String ERR_INVALID_METHOD_DECL = "invalid method declaration";
-    private static final String ERR_DUP_METHOD_PREFIX = "duplicate method name: ";
+    private static final String ERR_DUP_PARAMETER_PREFIX = "duplicate parameter name: " ;
     private static final String ERR_INVALID_PARAM_PREFIX = "invalid parameter: ";
     private static final String ERR_METHOD_NOT_CLOSED = "method not closed properly";
     private static final String ERR_MISSING_RETURN = "method must end with return";
@@ -74,12 +74,6 @@ public class MethodLine {
     private static final String EXTRA_CLOSING_BRACES = "too many closing braces";
 
     // argument patterns
-    private static final Pattern INT_LIT = Pattern.compile("^[+-]?\\d+$");
-    private static final Pattern DOUBLE_LIT =
-            Pattern.compile("^[+-]?(?:\\d+\\.\\d*|\\d*\\.\\d+|\\d+)$");
-    private static final Pattern BOOL_LIT = Pattern.compile("^(true|false)$");
-    private static final Pattern CHAR_LIT = Pattern.compile("^'[^']'$");
-    private static final Pattern STR_LIT = Pattern.compile("^\"[^\"]*\"$");
     private static final Pattern NAME_PATTERN =
             Pattern.compile("^(?!__)(?:[A-Za-z]\\w*|_[A-Za-z0-9]\\w*)$");
 
@@ -95,12 +89,72 @@ public class MethodLine {
     }
 
     /**
+     * Parses a single S-Java method header line and returns its method signature (name + parameters),
+     * without reading or validating the method body.
+     *
+     * <p><b>Purpose:</b> This is intended for the parser's first pass, where all method signatures are
+     * collected into the global methods table before validating method calls in a later pass.</p>
+     *
+     * <p><b>Accepted input format:</b> A line that matches {@code METHOD_PATTERN}, typically:
+     * <pre>
+     *     void <methodName>(<paramList>) {
+     * </pre>
+     * where {@code <paramList>} is either empty or a comma-separated list of parameters of the form:
+     * <pre>
+     *     (final)? <type> <name>
+     * </pre>
+     *
+     * <p><b>Validation performed:</b>
+     * <ul>
+     *   <li>Ensures the header matches the required method declaration syntax.</li>
+     *   <li>Extracts the method name and raw parameter list.</li>
+     *   <li>Delegates parameter parsing/validation to {@link #parseParameters(String)}.</li>
+     * </ul>
+     *
+     * <p><b>What this method does NOT do:</b>
+     * <ul>
+     *   <li>Does not register the method in the methods table.</li>
+     *   <li>Does not validate the method body or enforce that it ends with {@code return;}.</li>
+     *   <li>Does not create scopes or validate variable usage.</li>
+     * </ul>
+     *
+     * @param headerLine
+     *     The raw source line containing a method declaration header (including the opening '{').
+     *     Must not be {@code null}; it should be a single line of code.
+     *
+     * @return
+     *     A {@link Method} object representing the parsed method signature, containing:
+     *     <ul>
+     *       <li>the method name</li>
+     *       <li>an ordered list of {@link Method.Parameter} objects</li>
+     *     </ul>
+     *
+     * @throws MethodException
+     *     If {@code headerLine} does not match the method header syntax, or if the parameter list
+     *     contains an invalid parameter (as determined by {@link #parseParameters(String)}).
+     */
+    public static Method parseSignature(String headerLine)
+            throws MethodException {
+
+        Matcher m = METHOD_PATTERN.matcher(headerLine);
+        if (!m.matches()) {
+            throw new MethodException(ERR_INVALID_METHOD_DECL);
+        }
+
+        String methodName = m.group(1);
+        String paramsStr = m.group(2).trim();
+
+        List<Method.Parameter> params = parseParameters(paramsStr);
+        return new Method(methodName, params);
+    }
+
+
+    /**
      * Validates a method declaration and its body, and registers its signature.
      *
      * <p>This method performs the following steps:
      * <ol>
      *   <li>Checks method header syntax using {@link #METHOD_PATTERN}</li>
-     *   <li>Ensures the method name is unique in {@code methods}</li>
      *   <li>Parses parameters (including {@code final})</li>
      *   <li>Creates a {@link Scopes} instance for method-local scoping</li>
      *   <li>Declares parameters as initialized local variables</li>
@@ -111,38 +165,32 @@ public class MethodLine {
      * {@link Line#getLineType(String)}. Nested blocks ({@code if}/{@code while})
      * push new scopes, and closing braces pop scopes.</p>
      *
-     * @param reader the reader positioned immediately after the method header line;
-     *               this method continues consuming lines until the method closes
-     * @param globalVars global variable table used for resolution and assignments
-     * @param methods global methods table used to validate method calls
-     *
-     * @return a {@link Method} object representing the validated method signature
+     * @param lines
+     *     The full list of source lines of the s-Java file.
+     * @param bodyFromLine
+     *     The index (inclusive) of the first line inside the method body
+     *     (the line immediately after the opening '{').
+     * @param bodyToLine
+     *     The index (inclusive) of the closing '}' of the method.
+     * @param globalVars
+     *     A map of all global variables that are visible to this method.
+     * @param methods
+     *     A map of all declared method signatures in the file, used for
+     *     validating method calls.
      *
      * @throws MethodException if a method-related validation error occurs
      * @throws VariableException if a variable-related validation error occurs inside the method body
-     * @throws IOException if an I/O error occurs while reading further lines from {@code reader}
      */
-    public Method compileMethod(BufferedReader reader,
+    public void compileMethod(List<String> lines,
+                                int bodyFromLine,
+                                int bodyToLine,
                                 HashMap<String, Variable> globalVars,
                                 HashMap<String, Method> methods)
-            throws MethodException, IOException, VariableException {
+            throws MethodException, VariableException {
 
-        Matcher m = METHOD_PATTERN.matcher(line);
-        if (!m.matches()) {
-            throw new MethodException(ERR_INVALID_METHOD_DECL);
-        }
 
-        String methodName = m.group(1);
-        String paramsStr = m.group(2).trim();
-
-        if (methods.containsKey(methodName)) {
-            throw new MethodException(ERR_DUP_METHOD_PREFIX + methodName);
-        }
-
-        List<Method.Parameter> params = parseParameters(paramsStr);
-        Method method = new Method(methodName, params);
-
-        methods.put(methodName, method);
+        Method method = parseSignature(line);
+        List<Method.Parameter> params = method.getParameters();
 
         Scopes scopes = new Scopes(globalVars);
 
@@ -151,16 +199,15 @@ public class MethodLine {
             Variable v = new Variable(true, p.getType(), p.isFinal());
             boolean ok = scopes.declareLocal(p.getName(), v);
             if (!ok) {
-                throw new MethodException("duplicate parameter name: " + p.getName());
+                throw new MethodException(ERR_DUP_PARAMETER_PREFIX+ p.getName());
             }
         }
 
-        compileMethodBody(reader, scopes, globalVars, methods);
+        compileMethodBody(lines,bodyFromLine,bodyToLine, scopes, globalVars, methods);
 
-        return method;
     }
 
-    private List<Method.Parameter> parseParameters(String paramsStr)
+    private static List<Method.Parameter> parseParameters(String paramsStr)
             throws MethodException {
         List<Method.Parameter> params = new ArrayList<>();
         if (paramsStr.isEmpty()) return params;
@@ -179,17 +226,20 @@ public class MethodLine {
         return params;
     }
 
-    private void compileMethodBody(BufferedReader reader,
+    private void compileMethodBody(List<String> lines,
+                                   int  bodyFromLine,
+                                   int bodyToLine,
                                    Scopes scopes,
                                    HashMap<String, Variable> globalVars,
                                    HashMap<String, Method> methods)
-            throws IOException, MethodException, VariableException {
+            throws MethodException, VariableException {
 
         String bodyLine;
         boolean hasReturn = false;
         int depth = 1; // method opened '{' already
 
-        while ((bodyLine = reader.readLine()) != null) {
+        for (int idx = bodyFromLine; idx <= bodyToLine; idx++) {
+            bodyLine = lines.get(idx);
             TypeLineOptions lineType = Line.getLineType(bodyLine);
 
             if (lineType == null) {
@@ -219,8 +269,8 @@ public class MethodLine {
             }
 
             if (lineType == TypeLineOptions.ifWhileLine) {
-                IfWhileLine iwl = new IfWhileLine(bodyLine);
-                iwl.compileIfWhile(scopes, globalVars);
+                IfWhileLine ifWhileLine = new IfWhileLine(bodyLine);
+                ifWhileLine.compileIfWhile(scopes, globalVars);
                 scopes.pushScope();
                 depth++;
                 continue;
@@ -229,8 +279,8 @@ public class MethodLine {
             if (lineType == TypeLineOptions.variableLine ||
                     lineType == TypeLineOptions.assignmentLine) {
                 // Your VariableLine supports both decl + assignment already.
-                VariableLine vl = new VariableLine(bodyLine);
-                vl.compileVariableLine(globalVars, scopes, false);
+                VariableLine variableLine = new VariableLine(bodyLine);
+                variableLine.compileVariableLine(globalVars, scopes, false);
                 continue;
             }
 
@@ -288,6 +338,10 @@ public class MethodLine {
                                   HashMap<String, Variable> globalVars)
             throws MethodException {
 
+        boolean validLiteral = ValidationUtils.validateArgument(arg, paramType);
+
+        if(validLiteral) return;
+
         if (NAME_PATTERN.matcher(arg).matches()) {
             Variable v = (scopes != null) ? scopes.resolve(arg) : globalVars.get(arg);
             if (v == null) {
@@ -296,30 +350,13 @@ public class MethodLine {
             if (!v.isInitialized()) {
                 throw new MethodException(ERR_UNINIT_VAR_IN_CALL_PREFIX + arg);
             }
-            if (!isTypeCompatible(paramType, v.getVarType())) {
+            if (!ValidationUtils.isTypeCompatible(paramType, v.getVarType())) {
                 throw new MethodException(ERR_CALL_TYPE_MISMATCH);
             }
             return;
         }
 
-        boolean validLiteral =
-                (paramType.equals("int") && INT_LIT.matcher(arg).matches())
-                        || (paramType.equals("double") &&
-                        (DOUBLE_LIT.matcher(arg).matches() || INT_LIT.matcher(arg).matches()))
-                        || (paramType.equals("boolean") &&
-                        (BOOL_LIT.matcher(arg).matches() || DOUBLE_LIT.matcher(arg).matches()
-                                || INT_LIT.matcher(arg).matches()))
-                        || (paramType.equals("char") && CHAR_LIT.matcher(arg).matches())
-                        || (paramType.equals("String") && STR_LIT.matcher(arg).matches());
-
-        if (!validLiteral) {
-            throw new MethodException(ERR_INVALID_ARG_TYPE);
-        }
+        throw new MethodException(ERR_INVALID_ARG_TYPE);
     }
 
-    private boolean isTypeCompatible(String targetType, String sourceType) {
-        if (targetType.equals(sourceType)) return true;
-        if (targetType.equals("double") && sourceType.equals("int")) return true;
-        return targetType.equals("boolean") && (sourceType.equals("int") || sourceType.equals("double"));
-    }
 }

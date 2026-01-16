@@ -1,10 +1,13 @@
 package ex5.handleVariables;
 
 import ex5.main.Scopes;
+import ex5.validator.ValidationUtils;
 
 import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static ex5.validator.ValidationUtils.TYPE;
 
 
 /**
@@ -45,7 +48,6 @@ public class VariableLine {
 
     // ========= Regex pieces =========
     private static final String NAME = "(?!__)(?:[A-Za-z]\\w*|_[A-Za-z0-9]\\w*)";
-    private static final String TYPE = "int|double|boolean|char|String";
 
     private static final String INT_LIT = "[+-]?\\d+";
     private static final String DOUBLE_LIT = "[+-]?(?:\\d+\\.\\d*|\\d*\\.\\d+|\\d+)";
@@ -69,11 +71,6 @@ public class VariableLine {
 
     // Atomic patterns (anchored)
     private static final Pattern NAME_PATTERN = Pattern.compile("^" + NAME + "$");
-    private static final Pattern INT_PATTERN = Pattern.compile("^" + INT_LIT + "$");
-    private static final Pattern DOUBLE_PATTERN = Pattern.compile("^" + DOUBLE_LIT + "$");
-    private static final Pattern BOOL_PATTERN = Pattern.compile("^" + BOOL_LIT + "$");
-    private static final Pattern CHAR_PATTERN = Pattern.compile("^" + CHAR_LIT + "$");
-    private static final Pattern STR_PATTERN = Pattern.compile("^" + STR_LIT + "$");
 
     // ========= Error message constants =========
     private static final String ERR_MISSING_SEMI = "missing ';'.";
@@ -90,12 +87,8 @@ public class VariableLine {
     private static final String ERR_TYPE_MISMATCH = "type mismatch in assignment";
     private static final String ERR_DECL_WITHOUT_SCOPE =
             "internal error: local declaration without scopes";
+    private static final String ERR_UNKNOWN_TARGET_TYPE = "unknown target type: ";
 
-    private static final String ERR_BAD_INT = "incorrect int assignment.";
-    private static final String ERR_BAD_DOUBLE = "incorrect double assignment.";
-    private static final String ERR_BAD_BOOL = "incorrect boolean assignment.";
-    private static final String ERR_BAD_CHAR = "incorrect char assignment.";
-    private static final String ERR_BAD_STRING = "incorrect String assignment.";
 
     private final String varLine;
 
@@ -261,6 +254,10 @@ public class VariableLine {
         if (rhs == null) return;
         rhs = rhs.trim();
 
+        boolean validLiteral = ValidationUtils.validateArgument(rhs,targetType);
+
+        if(validLiteral) return;
+
         // RHS is a variable name
         if (NAME_PATTERN.matcher(rhs).matches()) {
             Variable refVar = (scopes != null) ? scopes.resolve(rhs) : variables.get(rhs);
@@ -271,48 +268,13 @@ public class VariableLine {
             if (!refVar.isInitialized()) {
                 throw new VariableException(ERR_REF_UNINIT_PREFIX + rhs);
             }
-            if (!isTypeCompatible(targetType, refVar.getVarType())) {
+            if (!ValidationUtils.isTypeCompatible(targetType, refVar.getVarType())) {
                 throw new VariableException(ERR_TYPE_MISMATCH);
             }
             return;
         }
 
-        // RHS is a literal
-        switch (targetType) {
-            case "int":
-                if (!INT_PATTERN.matcher(rhs).matches()) throw new VariableException(ERR_BAD_INT);
-                break;
-
-            case "double":
-                if (!(DOUBLE_PATTERN.matcher(rhs).matches() || INT_PATTERN.matcher(rhs).matches())) {
-                    throw new VariableException(ERR_BAD_DOUBLE);
-                }
-                break;
-
-            case "boolean":
-                if (!(BOOL_PATTERN.matcher(rhs).matches()
-                        || DOUBLE_PATTERN.matcher(rhs).matches()
-                        || INT_PATTERN.matcher(rhs).matches())) {
-                    throw new VariableException(ERR_BAD_BOOL);
-                }
-                break;
-
-            case "char":
-                if (!CHAR_PATTERN.matcher(rhs).matches()) throw new VariableException(ERR_BAD_CHAR);
-                break;
-
-            case "String":
-                if (!STR_PATTERN.matcher(rhs).matches()) throw new VariableException(ERR_BAD_STRING);
-                break;
-
-            default:
-                throw new VariableException("unknown target type: " + targetType);
-        }
+        throw new VariableException(ERR_UNKNOWN_TARGET_TYPE + targetType);
     }
 
-    private boolean isTypeCompatible(String targetType, String sourceType) {
-        if (targetType.equals(sourceType)) return true;
-        if (targetType.equals("double") && sourceType.equals("int")) return true;
-        return targetType.equals("boolean") && (sourceType.equals("int") || sourceType.equals("double"));
-    }
 }
